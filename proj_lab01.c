@@ -98,6 +98,9 @@ _iq gpower_now = 0;      //hotds the mppt power value
 _iq gmppt_buffer = 0 ;  // buffers the mppt_powe_value
 _iq gpower_before = 0;  // holds the previous value of the mppt
 
+_iq gVdata_show = 0;  //shows the voltage data in V
+_iq gIdata_show = 0;  //shows the current data in A
+
 int gmppt_sign = 0;    // initializes the mppt sign as 0
 
 volatile MOTOR_Vars_t gMotorVars = MOTOR_Vars_INIT;
@@ -256,14 +259,18 @@ interrupt void mainISR(void)
 
 
   if (gAdcData.V.value[0] < gref) {
-      gpwmvalue++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
+      gpwmvalue = gpwmvalue + 256;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
   } else {
-      gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+      gpwmvalue= gpwmvalue - 256;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
   }
 
   if (gcnt<32){
       gcurrent_now = gAdcData.I.value[0];  //reads the current
       gvoltage_now = gAdcData.V.value[0];  // reads the voltage
+
+      gVdata_show = gcurrent_now/300000; // converts the data to volts
+      gIdata_show = gvoltage_now/166666; // converts the data to volts
+
       gpower_now = gcurrent_now*gvoltage_now;       //calculates the new power value
 
       gmppt_buffer += gpower_now>>5;                // adds the value of the power divided by 32
