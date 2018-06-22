@@ -86,6 +86,11 @@ HAL_PwmData_t gPwmData = {0,0,0};             // Contains PWM duty cycles in glo
 
 HAL_AdcData_t gAdcData = {0,0,0,0,0,0,0};     // Contains Current and Voltage ADC readings in global Q format
 
+long gpwmvalue = _IQ(0.0);   //defines a pwm value
+
+long gref = 2400;              // defines the reference value to the followed by the tapas
+
+
 volatile MOTOR_Vars_t gMotorVars = MOTOR_Vars_INIT;
 
 #ifdef FLASH
@@ -109,6 +114,9 @@ DRV_SPI_8301_Vars_t gDrvSpi8301Vars;
 // Watch window interface to the 8305 SPI
 DRV_SPI_8305_Vars_t gDrvSpi8305Vars;
 #endif
+
+
+
 
 // **************************************************************************
 // the functions
@@ -214,8 +222,6 @@ void main(void)
 
 
   // For ever loop
-  long pwmvalue = _IQ(0.0);   //defines a pwm value
-  long ref = 3000;              // defines the reference value to the followed by the tapas
   while(true);
 
 } // end of main() function
@@ -239,16 +245,22 @@ interrupt void mainISR(void)
   // convert the ADC data
   HAL_readAdcData(halHandle,&gAdcData);
 
-  if (gAdcData.V.value[0]<ref) {
-      pwmvalue++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
+  if (gAdcData.V.value[0] < gref) {
+      gpwmvalue++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
   } else {
-      pwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+      gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
   }
+
+//  if ( gpwmvalue > _IQ(0.4) ){
+//      gpwmvalue = _IQ(0.4)
+//  } else if ( gpwmvalue < _IQ(-0.4) ) {
+//      gpwmvalue = _IQ(-0.4)
+//  }
 
    //HAL_disablePwm(halHandle);
 
   // Set the PWMs to 50% duty cycle
-   gPwmData.Tabc.value[0] = pwmvalue;   // we need to understand how the values inside the parentheses change the PWM
+   gPwmData.Tabc.value[0] = gpwmvalue;   // we need to understand how the values inside the parentheses change the PWM
    gPwmData.Tabc.value[1] = _IQ(-0.5);
    gPwmData.Tabc.value[2] = _IQ(-0.5);
 
