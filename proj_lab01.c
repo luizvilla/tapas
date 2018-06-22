@@ -86,10 +86,19 @@ HAL_PwmData_t gPwmData = {0,0,0};             // Contains PWM duty cycles in glo
 
 HAL_AdcData_t gAdcData = {0,0,0,0,0,0,0};     // Contains Current and Voltage ADC readings in global Q format
 
+int gcnt = 0;  // global counter
+
 long gpwmvalue = _IQ(0.0);   //defines a pwm value
 
-long gref = 2400;              // defines the reference value to the followed by the tapas
+_iq gref = 2400;              // defines the reference value to the followed by the tapas
 
+_iq gcurrent_now = 0;  //holds the mppt current value
+_iq gvoltage_now = 0;  // holds the mppt voltage value
+_iq gpower_now = 0;      //hotds the mppt power value
+_iq gmppt_buffer = 0 ;  // buffers the mppt_powe_value
+_iq gpower_before = 0;  // holds the previous value of the mppt
+
+int gmppt_sign = 0;    // initializes the mppt sign as 0
 
 volatile MOTOR_Vars_t gMotorVars = MOTOR_Vars_INIT;
 
@@ -245,11 +254,44 @@ interrupt void mainISR(void)
   // convert the ADC data
   HAL_readAdcData(halHandle,&gAdcData);
 
+
   if (gAdcData.V.value[0] < gref) {
       gpwmvalue++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
   } else {
       gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
   }
+
+  if (gcnt<32){
+      gcurrent_now = gAdcData.I.value[0];  //reads the current
+      gvoltage_now = gAdcData.V.value[0];  // reads the voltage
+      gpower_now = gcurrent_now*gvoltage_now;       //calculates the new power value
+
+      gmppt_buffer += gpower_now>>5;                // adds the value of the power divided by 32
+      gcnt++;                                       //increments the global counter
+
+  } else {
+      /* MPPT sign estimation and toggle */
+      if( gpower_before > gmppt_buffer )                         /* compare power values*/
+      {
+          gmppt_sign ^= 1 ; /* toggles the mppt_sign*/
+      }
+      gpower_before = gmppt_buffer;     // updates the power before with the current buffer
+      gcnt = 0;                         //resets the global counter
+      gmppt_buffer = 0;                 //resets the mppt buffer
+
+      //reference update based on MPPT sign estimation
+      if(gmppt_sign == 0){
+          gref = gref + 256 ;  // if the sign is 0, the system adds to the mppt
+      }else{
+          gref = gref - 256 ;  // if the sign is 1, the system detracts from the mppt
+      }
+
+      //safety feature for the mppt - avoids going beyond a maximum reference
+      if(gref > 10000000){
+          gref = 10000000;
+      }
+  }
+
 
 //  if ( gpwmvalue > _IQ(0.4) ){
 //      gpwmvalue = _IQ(0.4)
@@ -265,6 +307,13 @@ interrupt void mainISR(void)
    gPwmData.Tabc.value[2] = _IQ(-0.5);
 
    //HAL_enablePwm(halHandle);
+
+
+
+
+
+
+
 
   // write the PWM compare values
   HAL_writePwmData(halHandle,&gPwmData);
