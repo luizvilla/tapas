@@ -58,10 +58,11 @@
 // the defines
 
 #define LED_BLINK_FREQ_Hz   5
-#define SIN_REF_FREQ_Hz 50
+#define SIN_REF_FREQ_Hz 50 // define
 #define SIN_REF_SIZE_ARRAY 250
-#define Kp 1.0
-#define Ki 0.01
+#define SIN_REF_DECIMATION_Hz (SIN_REF_SIZE_ARRAY*SIN_REF_FREQ_Hz)  // define
+#define Kp 1.0 // the proportional gain of the pi controller
+#define Ki 0.01 // the integral gain of the pi controller
 
 // **************************************************************************
 // the globals
@@ -262,18 +263,18 @@ interrupt void mainISR(void)
 
 
   // generates a sinus waveform
-  if(decimator_cnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / SIN_REF_FREQ_Hz) ){
+  if(decimator_cnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / SIN_REF_DECIMATION_Hz) ){
 
-      if (sin_refcnt++>= (SIN_REF_SIZE_ARRAY-1) )
-          sin_refcnt = 0 ;
+      if (sin_refcnt++>= (SIN_REF_SIZE_ARRAY-1) ) // if we reach the end of the array
+          sin_refcnt = 0 ; // go to the beginning of the array
 
-      sinus_ref = sinus_ref_array[sin_refcnt] ;
-      decimator_cnt = 0 ;
+      sinus_ref = sinus_ref_array[sin_refcnt] ; // take the next point of the array
+      decimator_cnt = 0 ; // reset the decimator_cnt
   }
 
 
-  V_sin_out = gAdcData.V.value[0] - gAdcData.V.value[1] ; // Va - Vb
-  PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),(_iq *)controlOutput) ;
+  V_sin_out = gAdcData.V.value[0] - gAdcData.V.value[1] ; // calculate the output voltage (Va - Vb)
+  PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),(_iq *)controlOutput) ; // run the controller
 
 
   // Set the PWMs to 50% duty cycle
