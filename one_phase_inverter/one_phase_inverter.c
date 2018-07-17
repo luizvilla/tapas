@@ -95,6 +95,9 @@ int decimator_cnt ;
 _iq V_sin_out ;
 _iq controlOutput ;
 
+MATH_vec3       gOffsets_V_pu = {1270466, 1270466, 1270466};  //!< contains the offsets for the voltage feedback
+
+
 
 volatile MOTOR_Vars_t gMotorVars = MOTOR_Vars_INIT;
 
@@ -172,6 +175,11 @@ void main(void)
           gMotorVars.Flag_enableSys = false;
         }
     }
+
+  // set the pre-determined voltage feeback offset values
+  gOffsets_V_pu.value[0] = _IQ(V_A_offset);
+  gOffsets_V_pu.value[1] = _IQ(V_B_offset);
+  gOffsets_V_pu.value[2] = _IQ(V_C_offset);
 
 
   // initialize the user parameters
@@ -272,7 +280,9 @@ interrupt void mainISR(void)
       decimator_cnt = 0 ; // reset the decimator_cnt
   }
 
-
+   gAdcData.V.value[0] = gAdcData.V.value[0] - gOffsets_V_pu.value[0];
+   gAdcData.V.value[1] = gAdcData.V.value[1] - gOffsets_V_pu.value[1];
+   gAdcData.V.value[2] = gAdcData.V.value[2] - gOffsets_V_pu.value[2];
  // V_sin_out = gAdcData.V.value[0] - gAdcData.V.value[1] ; // calculate the output voltage (Va - Vb)
   //PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),(_iq *)controlOutput) ; // run the controller
 
