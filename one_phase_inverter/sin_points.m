@@ -14,7 +14,7 @@ sin_array = zeros(1,N) ; % init the array
 % end 
 
 for i=1:N
-    sin_array(i) =1/2*sin(fn*i)  ;  % we use "round" because it is an array of int 
+    sin_array(i) =1/2.02*sin(fn*i)  ;  % we use "round" because it is an array of int 
 end
 
 %% plot 
