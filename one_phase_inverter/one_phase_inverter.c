@@ -63,6 +63,7 @@
 #define SIN_REF_DECIMATION_Hz (SIN_REF_SIZE_ARRAY*SIN_REF_FREQ_Hz)  // define
 #define Kp 1.0 // the proportional gain of the pi controller
 #define Ki 0.01 // the integral gain of the pi controller
+#define V_offset 1270466
 
 // **************************************************************************
 // the globals
@@ -93,7 +94,7 @@ float sinus_ref ;    // holds the reference of the sine wave
 int sin_refcnt ;
 int decimator_cnt ;
 _iq V_sin_out ;
-_iq controlOutput ;
+_iq *controlOutput ;
 
 MATH_vec3       gOffsets_V_pu = {1270466, 1270466, 1270466};  //!< contains the offsets for the voltage feedback
 
@@ -180,6 +181,10 @@ void main(void)
   gOffsets_V_pu.value[0] = _IQ(V_A_offset);
   gOffsets_V_pu.value[1] = _IQ(V_B_offset);
   gOffsets_V_pu.value[2] = _IQ(V_C_offset);
+
+//  halHandle->adcBias.V.value[0] = V_offset ;
+//  halHandle->adcBias.V.value[1] = V_offset ;
+//  halHandle->adcBias.V.value[2] = V_offset ;
 
 
   // initialize the user parameters
@@ -284,7 +289,7 @@ interrupt void mainISR(void)
    gAdcData.V.value[1] = gAdcData.V.value[1] - gOffsets_V_pu.value[1];
    gAdcData.V.value[2] = gAdcData.V.value[2] - gOffsets_V_pu.value[2];
  // V_sin_out = gAdcData.V.value[0] - gAdcData.V.value[1] ; // calculate the output voltage (Va - Vb)
-  //PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),(_iq *)controlOutput) ; // run the controller
+  PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),controlOutput) ; // run the controller
 
 
   // Set the PWMs to 50% duty cycle
