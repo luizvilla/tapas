@@ -106,9 +106,9 @@ _iq gchargeV_bulk = 14 * equiv_V;
 _iq gchargeV_float = 12.2 * equiv_V;
 long gchargeT_abs = 0;
 long gchargeT_bulk = 0;
-long gchargeT_float = 432000000; // defines the float period (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
-long gchargeT_cycle = 0;
-long gchargeT_max = 0;
+long gchargeT_float = 0;
+long gchargeT_cycle = 432000000; // defines the float period (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
+long gchargeT_max = 432000000;
 
 
 
@@ -290,9 +290,16 @@ interrupt void mainISR(void)
   gchargecontrol = 0;
   if(gchargecontrol){// goes into the loop if the charge control is on
 
+//DESCRIPTION OF THE CASES
+// CASE 1 - Tests if the bulk voltage if the battery is beyond the bulk voltage after the float period and dumps if needed
+// CASE 2 - Sets all the variables once the the bulk voltage has been achieved
+// CASE 3 - Tracks the time for the system to achieve bulk current
+// CASE 4 - Track the bulk voltage during an absorption time calculated based on the bulk time
+// CASE 5 - Kicks off the float charge period for a fixed total of 4 hours
+
       switch(gcharge_case){
 
-      case 1:  // initial bulk case after a float period
+      case 1:  // Tests if the bulk voltage if the battery is beyond the bulk voltage after the float period and dumps if needed
 
           if(gAdcData.V.value[0] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
               gcharge_case = 2; //goes on to the next charge case
@@ -303,7 +310,7 @@ interrupt void mainISR(void)
 
           break; //gets out of case 1
 
-      case 2:  // case after the bulk voltage has been achieved
+      case 2:  // sets all the variables once the the bulk voltage has been achieved
 
           gchargeT_cnt = 0;
           HAL_disable_single_Pwm(HAL_Handle handle, 1); //disables the PWM 1 (to be changed by a variable)
@@ -311,7 +318,7 @@ interrupt void mainISR(void)
 
           break;// gets out of case 2
 
-      case 3:
+      case 3: // Tracks the time for the system to achieve bulk current
 
           if(gAdcData.V.value[0] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
 
@@ -319,15 +326,16 @@ interrupt void mainISR(void)
 
           } else {
 
-              gchargeT_bulk = gchargeT_cnt;                 //saves the time that was counted during the first part of the bulk
-              gchargeT_abs = 5*gchargeT_bulk;               //sets the absorption timer
-              gcharge_case = 4; //goes on to the next charge case
+              gchargeT_bulk = gchargeT_cnt;                                 //saves the time that was counted during the first part of the bulk
+              gchargeT_abs = 5*gchargeT_bulk;                               //sets the absorption timer
+              if(gchargeT_abs > gchargeT_max) gchargeT_abs = gchargeT_max;  //if the bulk time is too long, then the charge time will still only be 4 hours
+              gcharge_case = 4;                                             //goes on to the next charge case
 
           }// end of the case 3 if
 
           break;// gets out of case 3
 
-      case 4:
+      case 4:  // Track the bulk voltage during an absorption time calculated based on the bulk time
 
 
           if(gAdcData.V.value[0] < gchargeV_bulk){  //tracks the bulk voltage
@@ -335,22 +343,37 @@ interrupt void mainISR(void)
               gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
 
           } else {
+
               gpwmvalue++;  // increase the PWM (dump excess load) to control battery voltage
 
           }// end of the case 1 if
 
-          gchargeT_abs--;
+          gchargeT_abs--;   //decrements the absorption timer
 
-          if(gchargeT_abs == 0) gcharge_case = 5; //goes on to the next charge case
+          if(gchargeT_abs == 0){
+              gcharge_case = 5; //goes on to the next charge case
+              gchargeT_float = gchargeT_cycle; //loads up the cycle time onto the float timer
+          }
 
           break;//gets out of case 4
 
-      case 5:  //kicks off the float charge period
+      case 5:  //kicks off the float charge period for a fixed total of 4 hours
 
 
+          if(gAdcData.V.value[0] < gchargeV_float){  //tracks the float voltage
+
+              gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+
+          } else {
+
+              gpwmvalue++;  // increase the PWM (dump excess load) to control battery voltage
+
+          }// end of the case 1 if
 
 
+          gchargeT_float--;  //decrements the float timer
 
+          if(gchargeT_float == 0) gcharge_case = 1; //goes back to the beginning
 
           break;
 
