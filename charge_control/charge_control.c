@@ -92,11 +92,27 @@ int gmppt = 0;   // mppt clear variable
 long gpwmvalue = _IQ(0.0);   //variable that holds the pwm value, starting at 50%
 long gpwmstep = _IQ(0.0001);          // defines the gpwmstep size
 
-
-int gchargecontrol = 0;     //variable that holds the value of the charge controller
-
+_iq equiv_V = 172414;        //the equivalence between voltage and the values
 _iq gref = 1500000;              // defines the reference value to the followed by the tapas
 
+
+//CHARGE CONTROLLER VARIABLES
+int gchargecontrol = 0;     //variable that holds the value of the charge controller
+int gchargemode_bulk = 0;   // variable that sets or clears the bulk mode during charging
+int gchargemode_float = 0;   // variable that sets or clears the float mode during charging
+int gcharge_case = 0;       //variable that holds the charge case for the charge controller
+
+_iq gchargeV_bulk = 14 * equiv_V;
+_iq gchargeV_float = 12.2 * equiv_V;
+long gchargeT_abs = 0;
+long gchargeT_bulk = 0;
+long gchargeT_float = 432000000; // defines the float period (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
+long gchargeT_cycle = 0;
+long gchargeT_max = 0;
+
+
+
+// MPPT variables
 _iq gcurrent_now = 0;  //holds the mppt current value
 _iq gvoltage_now = 0;  // holds the mppt voltage value
 _iq gpower_now = 0;      //hotds the mppt power value
@@ -217,10 +233,10 @@ void main(void)
 
 
   // disable the PWM
-  //HAL_disablePwm(halHandle);
+  HAL_disablePwm(halHandle);
 
   // enable the PWM
-  HAL_enablePwm(halHandle);
+  //HAL_enablePwm(halHandle);
 
 
 #ifdef DRV8301_SPI
@@ -272,6 +288,108 @@ interrupt void mainISR(void)
   }
 
   gchargecontrol = 0;
+  if(gchargecontrol){// goes into the loop if the charge control is on
+
+      switch(gcharge_case){
+
+      case 1:  // initial bulk case after a float period
+
+          if(gAdcData.V.value[0] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
+              gcharge_case = 2; //goes on to the next charge case
+          } else {
+              gpwmvalue++;  // increase the PWM (dump excess load) to control battery voltage
+              if(gpwmvalue > _IQ(0.49)) gpwmvalue = _IQ(0.49);  //saturates the pwm just in case
+          }// end of the case 1 if
+
+          break; //gets out of case 1
+
+      case 2:  // case after the bulk voltage has been achieved
+
+          gchargeT_cnt = 0;
+          HAL_disable_single_Pwm(HAL_Handle handle, 1); //disables the PWM 1 (to be changed by a variable)
+          gcharge_case = 3; //goes on to the next charge case
+
+          break;// gets out of case 2
+
+      case 3:
+
+          if(gAdcData.V.value[0] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
+
+              gchargeT_cnt++;  // adds to the counter
+
+          } else {
+
+              gchargeT_bulk = gchargeT_cnt;                 //saves the time that was counted during the first part of the bulk
+              gchargeT_abs = 5*gchargeT_bulk;               //sets the absorption timer
+              gcharge_case = 4; //goes on to the next charge case
+
+          }// end of the case 3 if
+
+          break;// gets out of case 3
+
+      case 4:
+
+
+          if(gAdcData.V.value[0] < gchargeV_bulk){  //tracks the bulk voltage
+
+              gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+
+          } else {
+              gpwmvalue++;  // increase the PWM (dump excess load) to control battery voltage
+
+          }// end of the case 1 if
+
+          gchargeT_abs--;
+
+          if(gchargeT_abs == 0) gcharge_case = 5; //goes on to the next charge case
+
+          break;//gets out of case 4
+
+      case 5:  //kicks off the float charge period
+
+
+
+
+
+
+          break;
+
+      }// end of switch case
+
+
+
+
+
+
+          if(gAdcData.V.value[0] < gchargeV_bulk && gchargeT_cnt == 0 ){  //test if the battery is above bulk voltage and the time counter is zero
+
+              gchargeT_cnt++;  // adds to the counter
+              HAL_disable_single_Pwm(HAL_Handle handle, 1); //disables the PWM 1 (to be changed by a variable)
+
+
+          } else if(gAdcData.V.value[0] < gchargeV_bulk && gchargeT_cnt > 0) {
+
+              gchargeT_cnt++;  // adds to the counter
+
+          } else if(gAdcData.V.value[0] > gchargeV_bulk && gchargeT_cnt > 0) {
+
+              gchargeT_bulk = gchargeT_cnt;                 //saves the time that was counted during the first part of the bulk
+              gchargeT_abs = 5*gchargeT_bulk;               //sets the absorption timer
+              gchargeT_cnt = 0;                             //resets the counter
+
+          } else if(gAdcData.V.value[0] > gchargeV_bulk && gchargeT_abs > 0) {
+
+
+
+          } else {
+              gpwmvalue++;  // increase the PWM (dump excess load) to control battery voltage
+          }
+      } else {
+
+
+      }//end of the gchargemode_bulk if
+
+  }//ed of the gchargecontrol if (global if)
 
   gmppt = 0;            //disables the MPPT
   if (gmppt){
