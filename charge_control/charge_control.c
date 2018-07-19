@@ -53,6 +53,7 @@
 // modules
 #include "sw/modules/math/src/32b/math.h"
 #include "sw/modules/memCopy/src/memCopy.h"
+#include "sw/modules/pi/src/32b/pi.h"
 
 
 // drivers
@@ -105,14 +106,15 @@ int gchargemode_bulk = 0;   // variable that sets or clears the bulk mode during
 int gchargemode_float = 0;   // variable that sets or clears the float mode during charging
 int gcharge_case = 0;       //variable that holds the charge case for the charge controller
 int gcharge_channel = 0;    //defines the PWM channel which will take the change controller
+int gcharge_led_freq = 15;  // defines the led blinking frequency for the charge
 
-_iq gchargeV_bulk = 14 * 172414;
-_iq gchargeV_float = 12.2 * 172414;
-long gchargeT_abs = 0;
-long gchargeT_bulk = 0;
-long gchargeT_float = 0;
-long gchargeT_cycle = 432000000; // defines the float period (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
-long gchargeT_max = 432000000;
+_iq gchargeV_bulk = 14 * 172414;      //bulk voltage reference
+_iq gchargeV_float = 12.2 * 172414;   //float voltage reference
+long gchargeT_abs = 0;                  // absorption phase Timer
+long gchargeT_bulk = 0;                 // bulk phase timer
+long gchargeT_float = 0;                // float phase timer
+long gchargeT_cycle = 432000000;        // defines the float period (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
+long gchargeT_max = 432000000;          // defines the maximum time (4 hours = 30000 * 60 * 60 * 4 = frequency * second * minute * hour )
 
 
 
@@ -127,6 +129,8 @@ int gmppt_cnt = 0;  // defines the counter for the mppt
 int gmppt_on = 0;   //defines if the mppt is on
 int gmppt = 0;   // mppt clear variable
 int gmppt_sign = 0;    // initializes the mppt sign as 0
+int gmppt_led_freq = 10;  // defines the led blinking frequency for the mppt
+
 uint_least32_t gmppt_channel = 0;    //defines the PWM channel which will take the mppt
 int gmppt_step = 0;    // initializes the mppt step as 0
 _iq gmpptlim_max = 0; //initializes the maximum voltage reference as 0
@@ -248,11 +252,12 @@ void main(void)
 
 
   // disable the PWM
-  HAL_disablePwm(halHandle);
+//  HAL_disablePwm(halHandle);
 
   // enable the PWM
-  //HAL_enablePwm(halHandle);
+  HAL_enablePwm(halHandle);
 
+  HAL_toggleLed(halHandle,(GPIO_Number_e)HAL_Gpio_LED2); // toggles the led at the start of the system
 
 
 #ifdef DRV8301_SPI
@@ -280,11 +285,11 @@ interrupt void mainISR(void)
 {
 
   // toggle status LED
-  if(gLEDcnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / LED_BLINK_FREQ_Hz))
-  {
-    HAL_toggleLed(halHandle,(GPIO_Number_e)HAL_Gpio_LED2);
-    gLEDcnt = 0;
-  }
+//  if(gLEDcnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / LED_BLINK_FREQ_Hz))
+//  {
+//    HAL_toggleLed(halHandle,(GPIO_Number_e)HAL_Gpio_LED2);
+//    gLEDcnt = 0;
+//  }
 
 
   // acknowledge the ADC interrupt
@@ -296,9 +301,16 @@ interrupt void mainISR(void)
 
 
 
-  gchargecontrol = 0;
+  gchargecontrol = 1;
   gcharge_channel = 1;  // defines the channel where the charge controller will be implemented
+
   if(gchargecontrol){// goes into the loop if the charge control is on
+
+
+      if(gcharge_case == 0){  // initializes the charge control
+          HAL_enable_single_Pwm(halHandle, (gcharge_channel-1));
+          gcharge_case = 1; // trigger the first charge case
+      }
 
 //-----------------------------------------------------------------------
 //DESCRIPTION OF THE CASES
@@ -316,8 +328,9 @@ interrupt void mainISR(void)
 //-----------------------------------------------------------------------
       case 1:  // Tests if the bulk voltage if the battery is beyond the bulk voltage after the float period and dumps if needed
 
-          if(gAdcData.V.value[gcharge_channel-1] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
+          if(gAdcData.dcBus < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
               gcharge_case = 2; //goes on to the next charge case
+              HAL_toggleLed(halHandle,(GPIO_Number_e)HAL_Gpio_LED2); // toggles the led when I leave this state
           } else {
               gpwmvalue_charge++;  // increase the PWM (dump excess load) to control battery voltage
               if(gpwmvalue_charge > _IQ(0.49)) gpwmvalue_charge = _IQ(0.49);  //saturates the pwm just in case
@@ -342,7 +355,7 @@ interrupt void mainISR(void)
 //-----------------------------------------------------------------------
       case 3: // Tracks the time for the system to achieve bulk current
 
-          if(gAdcData.V.value[gcharge_channel-1] < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
+          if(gAdcData.dcBus < gchargeV_bulk){  //test if the battery is above bulk voltage and the time counter is zero
 
               gchargeT_bulk++;  // adds to the counter
 
@@ -351,6 +364,7 @@ interrupt void mainISR(void)
               gchargeT_abs = 5*gchargeT_bulk;                               //sets the absorption timer
               if(gchargeT_abs > gchargeT_max) gchargeT_abs = gchargeT_max;  //if the bulk time is too long, then the charge time will still only be 4 hours
               gcharge_case = 4;                                             //goes on to the next charge case
+              HAL_toggleLed(halHandle,(GPIO_Number_e)HAL_Gpio_LED2);        // toggles the LED when moving to the next state
 
           }// end of the case 3 if
 
@@ -364,13 +378,15 @@ interrupt void mainISR(void)
 
           HAL_enable_single_Pwm(halHandle, gcharge_channel);
 
-          if(gAdcData.V.value[gcharge_channel-1] < gchargeV_bulk){  //tracks the bulk voltage
+          if(gAdcData.dcBus < gchargeV_bulk){  //tracks the bulk voltage
 
               gpwmvalue_charge--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+              if(gpwmvalue_charge < _IQ(-0.49)) gpwmvalue_charge = _IQ(-0.49);  //saturates the pwm just in case
 
           } else {
 
               gpwmvalue_charge++;  // increase the PWM (dump excess load) to control battery voltage
+              if(gpwmvalue_charge > _IQ(0.49)) gpwmvalue_charge = _IQ(0.49);  //saturates the pwm just in case
 
           }// end of the case 1 if
 
@@ -389,13 +405,15 @@ interrupt void mainISR(void)
       case 5:  //kicks off the float charge period for a fixed total of 4 hours
 
 
-          if(gAdcData.V.value[gcharge_channel-1] < gchargeV_float){  //tracks the float voltage
+          if(gAdcData.dcBus < gchargeV_float){  //tracks the float voltage
 
               gpwmvalue_charge--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+              if(gpwmvalue_charge < _IQ(-0.49)) gpwmvalue_charge = _IQ(-0.49);  //saturates the pwm just in case
 
           } else {
 
               gpwmvalue_charge++;  // increase the PWM (dump excess load) to control battery voltage
+              if(gpwmvalue_charge > _IQ(0.49)) gpwmvalue_charge = _IQ(0.49);  //saturates the pwm just in case
 
           }// end of the case 1 if
 
@@ -410,12 +428,9 @@ interrupt void mainISR(void)
 //-----------------------------------------------------------------------
 
 
+  gPwmData.Tabc.value[gcharge_channel-1] = gpwmvalue_charge;   // uploads the pwm value onto the channel
 
-
-
-
-
-  }//ed of the gchargecontrol if (global if)
+  }//end of the gchargecontrol if
 
   gmppt = 0;            //disables the MPPT
   gmppt_step = 256;     // defines the mppt step size (fixed step)
@@ -458,21 +473,24 @@ interrupt void mainISR(void)
 
           }// end of gmppt_sign if
       }// end of the gcnt if
+
+      // Tracks the global reference
+      if (gAdcData.V.value[gmppt_channel-1] < gref) {
+          gpwmvalue_mppt++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
+      } else {
+          gpwmvalue_mppt--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+      }
+      gPwmData.Tabc.value[gmppt_channel-1] = gpwmvalue_mppt;   // we need to understand how the values inside the parentheses change the PWM
+
+
+
   }// end of the gmppt if
 
 
 
   // Set the PWMs to 50% duty cycle
-   if(gchargecontrol) gPwmData.Tabc.value[gcharge_channel-1] = gpwmvalue_charge;   // we need to understand how the values inside the parentheses change the PWM
 
    if(gmppt) {
-       // Tracks the global reference
-       if (gAdcData.V.value[gmppt_channel-1] < gref) {
-           gpwmvalue_mppt++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
-       } else {
-           gpwmvalue_mppt--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
-       }
-       gPwmData.Tabc.value[gmppt_channel-1] = gpwmvalue_mppt;   // we need to understand how the values inside the parentheses change the PWM
    }
    //gPwmData.Tabc.value[1] = _IQ(-0.5);
    //gPwmData.Tabc.value[2] = _IQ(-0.5);
