@@ -9,13 +9,13 @@ offset = 0 ; %1023 ; % offset the signal
 
 sin_array = zeros(1,N) ; % init the array 
 
-for i=1:N
-    sin_array(i) = round(A*sin(fn*i))  ;  % we use "round" because it is an array of int 
-end 
-
 % for i=1:N
-%     sin_array(i) =1/2.02*sin(fn*i)  ;  % we use "round" because it is an array of int 
-% end
+%     sin_array(i) = round(A*sin(fn*i))  ;  % we use "round" because it is an array of int 
+% end 
+
+for i=1:N
+    sin_array(i) =1/2.02*sin(fn*i)  ;  % we use "round" because it is an array of int 
+end
 
 %% plot 
 
