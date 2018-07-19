@@ -87,10 +87,15 @@ HAL_PwmData_t gPwmData = {0,0,0};             // Contains PWM duty cycles in glo
 HAL_AdcData_t gAdcData = {0,0,0,0,0,0,0};     // Contains Current and Voltage ADC readings in global Q format
 
 int gcnt = 0;  // global counter
+int gmppt = 0;   // mppt clear variable
 
-long gpwmvalue = _IQ(0.0);   //defines a pwm value
+long gpwmvalue = _IQ(0.0);   //variable that holds the pwm value, starting at 50%
+long gpwmstep = _IQ(0.0001);          // defines the gpwmstep size
 
-_iq gref = 2400;              // defines the reference value to the followed by the tapas
+
+int gchargecontrol = 0;     //variable that holds the value of the charge controller
+
+_iq gref = 1500000;              // defines the reference value to the followed by the tapas
 
 _iq gcurrent_now = 0;  //holds the mppt current value
 _iq gvoltage_now = 0;  // holds the mppt voltage value
@@ -212,7 +217,10 @@ void main(void)
 
 
   // disable the PWM
-  HAL_disablePwm(halHandle);
+  //HAL_disablePwm(halHandle);
+
+  // enable the PWM
+  HAL_enablePwm(halHandle);
 
 
 #ifdef DRV8301_SPI
@@ -257,41 +265,48 @@ interrupt void mainISR(void)
 
   if (gAdcData.V.value[0] < gref) {
       gpwmvalue++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
+//      if(gpwmvalue > _IQ(0.49)) gpwmvalue = _IQ(0.49);
   } else {
       gpwmvalue--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+//      if(gpwmvalue < _IQ(-0.49)) gpwmvalue = _IQ(-0.49);
   }
 
-  if (gcnt<32){
-      gcurrent_now = gAdcData.I.value[0];  //reads the current
-      gvoltage_now = gAdcData.V.value[0];  // reads the voltage
-      gpower_now = gcurrent_now*gvoltage_now;       //calculates the new power value
+  gchargecontrol = 0;
 
-      gmppt_buffer += gpower_now>>5;                // adds the value of the power divided by 32
-      gcnt++;                                       //increments the global counter
+  gmppt = 0;            //disables the MPPT
+  if (gmppt){
 
-  } else {
-      /* MPPT sign estimation and toggle */
-      if( gpower_before > gmppt_buffer )                         /* compare power values*/
-      {
-          gmppt_sign ^= 1 ; /* toggles the mppt_sign*/
-      }
-      gpower_before = gmppt_buffer;     // updates the power before with the current buffer
-      gcnt = 0;                         //resets the global counter
-      gmppt_buffer = 0;                 //resets the mppt buffer
+      if (gcnt<32){
+          gcurrent_now = gAdcData.I.value[0];  //reads the current
+          gvoltage_now = gAdcData.V.value[0];  // reads the voltage
+          gpower_now = gcurrent_now*gvoltage_now;       //calculates the new power value
 
-      //reference update based on MPPT sign estimation
-      if(gmppt_sign == 0){
-          gref = gref + 256 ;  // if the sign is 0, the system adds to the mppt
-      }else{
-          gref = gref - 256 ;  // if the sign is 1, the system detracts from the mppt
-      }
+          gmppt_buffer += gpower_now>>5;                // adds the value of the power divided by 32
+          gcnt++;                                       //increments the global counter
 
-      //safety feature for the mppt - avoids going beyond a maximum reference
-      if(gref > 10000000){
-          gref = 10000000;
+      } else {
+          /* MPPT sign estimation and toggle */
+          if( gpower_before > gmppt_buffer )                         /* compare power values*/
+          {
+              gmppt_sign ^= 1 ; /* toggles the mppt_sign*/
+          }
+          gpower_before = gmppt_buffer;     // updates the power before with the current buffer
+          gcnt = 0;                         //resets the global counter
+          gmppt_buffer = 0;                 //resets the mppt buffer
+
+          //reference update based on MPPT sign estimation
+          if(gmppt_sign == 0){
+              gref = gref + 256 ;  // if the sign is 0, the system adds to the mppt
+          }else{
+              gref = gref - 256 ;  // if the sign is 1, the system detracts from the mppt
+          }
+
+          //safety feature for the mppt - avoids going beyond a maximum reference
+          if(gref > 10000000){
+              gref = 10000000;
+          }
       }
   }
-
 
 //  if ( gpwmvalue > _IQ(0.4) ){
 //      gpwmvalue = _IQ(0.4)

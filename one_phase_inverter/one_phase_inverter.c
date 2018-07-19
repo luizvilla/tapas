@@ -61,8 +61,8 @@
 #define SIN_REF_FREQ_Hz 50 // define the frequency of the reference
 #define SIN_REF_SIZE_ARRAY 250
 #define SIN_REF_DECIMATION_Hz (SIN_REF_SIZE_ARRAY*SIN_REF_FREQ_Hz)  // define
-#define Kp 1.0 // the proportional gain of the pi controller
-#define Ki 0.01 // the integral gain of the pi controller
+#define Kp 10.0 // the proportional gain of the pi controller
+#define Ki 0.00 // the integral gain of the pi controller
 #define V_offset 1270466
 
 // **************************************************************************
@@ -94,7 +94,8 @@ long sinus_ref ;    // holds the reference of the sine wave
 int sin_refcnt ;
 int decimator_cnt ;
 _iq V_sin_out ;
-_iq *controlOutput ;
+_iq controlOutput ;    //holds the output of the control
+_iq error;
 
 MATH_vec3       gOffsets_V_pu = {1270466, 1270466, 1270466};  //!< contains the offsets for the voltage feedback
 
@@ -275,7 +276,7 @@ interrupt void mainISR(void)
   HAL_readAdcData(halHandle,&gAdcData);
 
 
-  // generates a sinus waveform
+  // generates a sine waveform
   if(decimator_cnt++ > (uint_least32_t)(USER_ISR_FREQ_Hz / SIN_REF_DECIMATION_Hz) ){
 
       if (sin_refcnt++>= (SIN_REF_SIZE_ARRAY-1) ) // if we reach the end of the array
@@ -289,12 +290,13 @@ interrupt void mainISR(void)
 //   gAdcData.V.value[1] = gAdcData.V.value[1] - gOffsets_V_pu.value[1];
 //   gAdcData.V.value[2] = gAdcData.V.value[2] - gOffsets_V_pu.value[2];
   V_sin_out = gAdcData.V.value[0] - gAdcData.V.value[1] ; // calculate the output voltage (Va - Vb)
-  PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),controlOutput) ; // run the controller
+  error = sinus_ref - V_sin_out; //calculates the error of the system
+  PI_run_parallel( piHandle,sinus_ref,V_sin_out,_IQ(0.0),&controlOutput) ; // run the controller
 
 
   // Set the PWMs to 50% duty cycle
-   gPwmData.Tabc.value[0] = _IQ(*controlOutput); // P1
-   gPwmData.Tabc.value[1] = _IQ(-*controlOutput); // P2
+   gPwmData.Tabc.value[0] = _IQ(controlOutput); // P1
+   gPwmData.Tabc.value[1] = _IQ(-controlOutput); // P2
 
 
   // write the PWM compare values
