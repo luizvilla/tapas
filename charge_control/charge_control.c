@@ -128,7 +128,7 @@ _iq gmpptpower_before = 0;  // holds the previous value of the mppt
 int gmppt_cnt = 0;  // defines the counter for the mppt
 int gmppt_on = 0;   //defines if the mppt is on
 int gmppt = 0;   // mppt clear variable
-int gmppt_sign = 0;    // initializes the mppt sign as 0
+int gmppt_sign = 1;    // initializes the mppt sign as 0
 int gmppt_led_freq = 10;  // defines the led blinking frequency for the mppt
 
 uint_least32_t gmppt_channel = 0;    //defines the PWM channel which will take the mppt
@@ -137,9 +137,10 @@ _iq gmpptlim_max = 0; //initializes the maximum voltage reference as 0
 _iq gmpptlim_min = 0; //initializes the maximum voltage reference as 0
 
 // DC-DC variables
-int gdc_channel = 0;    //defines the PWM channel which will take the mppt
-
-
+int gdc = 0;                 // dc-dc conversion flag
+int gdc_channel = 0;         //defines the PWM channel which will take the mppt
+int gdc_ref = 0;             // defines a dc-dc reference
+int gpwmvalue_dc = _IQ(0.0);  //
 volatile MOTOR_Vars_t gMotorVars = MOTOR_Vars_INIT;
 
 #ifdef FLASH
@@ -301,7 +302,7 @@ interrupt void mainISR(void)
 
 
 
-  gchargecontrol = 1;
+  gchargecontrol = 0;   // turns on or off the charge control
   gcharge_channel = 1;  // defines the channel where the charge controller will be implemented
 
   if(gchargecontrol){// goes into the loop if the charge control is on
@@ -432,11 +433,12 @@ interrupt void mainISR(void)
 
   }//end of the gchargecontrol if
 
-  gmppt = 0;            //disables the MPPT
-  gmppt_step = 256;     // defines the mppt step size (fixed step)
+  gmppt = 1;            //disables the MPPT
+  gmppt_step = 1;     // defines the mppt step size (fixed step)
   gmpptlim_max = 4000000; // defines the MPPT max voltage reference value
   gmpptlim_min = 4000000; // defines the MPPT min voltage reference value
   gmppt_channel = 2;    // defines the MPPT channel as 2
+  //gmppt_sign = 1;    // initializes the mppt sign as 0
 
   if (gmppt){   //tests if the mppt is live
       if(gmppt_on==0) {
@@ -480,28 +482,31 @@ interrupt void mainISR(void)
       } else {
           gpwmvalue_mppt--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
       }
+
       gPwmData.Tabc.value[gmppt_channel-1] = gpwmvalue_mppt;   // we need to understand how the values inside the parentheses change the PWM
-
-
 
   }// end of the gmppt if
 
 
 
-  // Set the PWMs to 50% duty cycle
+   gdc_channel = 1;    // activates the dc channel
+   if(gdc_channel) {
 
-   if(gmppt) {
+//       if(gdc_ref == 0)  gdc_ref = gAdcData.dcBus; //sets the current DC bus as a reference
+//       // Tracks the global reference
+//       if (gAdcData.dcBus > gdc_ref) {
+//           gpwmvalue_dc++;  //if the value of my measurement is lower than the reference, the pwmvalue goes up
+//           if(gpwmvalue_dc > _IQ(0.49)) gpwmvalue_dc = _IQ(0.49);  //saturates the pwm just in case
+//       } else {
+//           gpwmvalue_dc--;  //if the value of my measurement is lower than the reference, the pwmvalue goes down
+//           if(gpwmvalue_dc < _IQ(-0.49)) gpwmvalue_dc = _IQ(-0.49);  //saturates the pwm just in case
+//       }
+
+       gPwmData.Tabc.value[gdc_channel-1] = _IQ(0.49);   // we need to understand how the values inside the parentheses change the PWM
+
    }
-   //gPwmData.Tabc.value[1] = _IQ(-0.5);
-   //gPwmData.Tabc.value[2] = _IQ(-0.5);
 
    //HAL_enablePwm(halHandle);
-
-
-
-
-
-
 
 
   // write the PWM compare values
